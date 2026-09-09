@@ -20,7 +20,4 @@
 ### 📦 **لینک‌های مستقیم سابسکرایبشن (Subscription Links)**
 > برای استفاده، روی دکمه‌ی **Copy** در گوشه کادر زیر بزنید تا هر سه لینک یکجا کپی شوند:
 
-```text
-https://raw.githubusercontent.com/Tahabab/-Goodbaye_filtering/main/subscription_part1.txt
-https://raw.githubusercontent.com/Tahabab/-Goodbaye_filtering/main/subscription_part2.txt
-https://raw.githubusercontent.com/Tahabab/-Goodbaye_filtering/main/subscription_part3.txt
+``
