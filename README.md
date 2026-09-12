@@ -1,23 +1,61 @@
-<div align="center">
+# V2Ray Smart Collector v3.0 — راهنمای بسته
 
-# 🚀 **Goodbaye Filtering - Free V2Ray Subscriptions**
-### **سیستم هوشمند جمع‌آوری، پاکسازی و تست پینگ کانفیگ‌های پرسرعت**
+## این بسته شامل چه چیزهایی است
 
-[![GitHub Actions Status](https://github.com/Tahabab/-Goodbaye_filtering/actions/workflows/run.yml/badge.svg)](https://github.com/Tahabab/-Goodbaye_filtering/actions)
-[![Telegram Channel](https://img.shields.io/badge/Telegram-Channel-blue?logo=telegram&style=flat-square)](https://t.me/Goodbaye_filtering)
-[![Telegram Chat](https://img.shields.io/badge/Telegram-Chat-green?logo=telegram&style=flat-square)](https://t.me/CONFIG_V2RAY_VIP)
+| فایل | توضیح |
+|---|---|
+| `v2ray_collector_v3.py` | نسخه کامل و مهندسی‌شده (هر دو بخش کد ادغام شده) |
+| `test_v2ray.py` | تست‌های pytest (۲۶ تست) با پوشش باگ‌های پیدا شده |
+| `requirements.txt` | وابستگی‌ها |
 
-</div>
+## اصلاحات اعمال‌شده (همگی با تست عملی اثبات شده)
 
----
+### بخش اول (پارسرها/دیتابیس/فچر)
+1. **`is_valid_host`** — نسخه قبلی رشته‌هایی مثل `""` یا `"bad host!!"` را می‌پذیرفت
+   (کدک idna پایتون سهل‌گیر است). حالا: IP با `ipaddress`، دامنه با regex روی
+   لیبل‌ها، طول ≤۲۵۳، پشتیبانی IDN.
+2. **ss با `?plugin=` (SIP002)** — دیگر حذف نمی‌شود؛ query قبل از جداسازی پورت
+   حذف می‌شود. براکت IPv6 هم برداشته می‌شود.
+3. **SQLite از چند نخ** — `check_same_thread=False` + `RLock` + حالت WAL؛ از
+   نخ‌های worker دیگر `ProgrammingError` نمی‌گیرید.
+4. **محدوده پورت** — همه پروتکل‌ها ۱ تا ۶۵۵۳۵ را رعایت می‌کنند؛ عبارت غلط
+   `not p.port` اصلاح شد.
+5. **نصب خودکار پکیج حذف شد** — خطای واضح + `requirements.txt`.
 
-### 💬 **راه‌های ارتباطی و کانال‌ها:**
-- 📢 **کانال اصلی کانفیگ‌ها:** [لینک ورود به کانال اصلی (Goodbaye_filtering)](https://t.me/Goodbaye_filtering)
-- 💬 **گروه تبادل و چت VIP:** [لینک ورود به گروه چت VIP (CONFIG_V2RAY_VIP)](https://t.me/CONFIG_V2RAY_VIP)
+### بخش دوم (تستر/جغرافیا/امتیازدهی/تلگرام/Xray/main)
+6. **hysteria2/hy2 از تست TLS روی TCP خارج شدند** — این پروتکل QUIC/UDP است و
+   مصافحه TLS-TCP برای آن معتبر نیست؛ نسخه قبلی نودهای hy2 سالم را بی‌مورد حذف می‌کرد.
+7. **GeoLocator** — `socket.gethostbyname` (مسدودکننده event loop) به
+   `asyncio.to_thread` منتقل شد؛ با صدها میزبان، لوپ دیگر نمی‌ایستد.
+8. **مسیر کانفیگ Xray** — از `/tmp` سخت‌کد به `tempfile.gettempdir()` منتقل شد
+   (سازگار با ویندوز هم هست).
+9. **یکپارچه‌سازی نسخه** — لاگ‌ها (v2.1/v2.2 متناقض) به v3.0 یکسان شدند.
 
----
+## محدودیت‌های شناخته‌شده (طراحی عمدی)
 
-### 📦 **لینک‌های مستقیم سابسکرایبشن (Subscription Links)**
-> برای استفاده، روی دکمه‌ی **Copy** در گوشه کادر زیر بزنید تا هر سه لینک یکجا کپی شوند:
+- **hysteria2 فقط با TCP-ping فیلتر می‌شود** — اعتبارسنجی واقعی hy2 نیاز به
+  پروب QUIC دارد که خارج از کتابخانه استاندارد پایتون است (مثلاً پکیج aioquic).
+  نود hy2 که TCP بسته داشته باشد همچنان حذف می‌شود؛ این یک فیلتر خشن است.
+- **vmess به‌طور پیش‌فرض غیرفعال است** (`INCLUDE_VMESS=False`) — با
+  `INCLUDE_VMESS=True` فعال می‌شود؛ rename برای vmess روی فیلد JSON «ps» کار می‌کند.
+- **ss با plugin (obfs) در تست واقعی Xray ساخته نمی‌شود** — `build_xray_outbound`
+  برای چنین نودی outbound برنمی‌گرداند و نود جریمه نمی‌شود اما از مسیر Xray عبور نمی‌کند.
 
-``
+## اجرا
+
+```bash
+python -m pip install -r requirements.txt
+python -m pytest test_v2ray.py -v          # تست‌ها (۲۶ تست)
+python v2ray_collector_v3.py               # اجرای جمع‌آوری
+```
+
+## متغیرهای محیطی
+
+- `BOT_TOKEN` و `CHAT_ID` — برای ارسال خودکار به تلگرام (فایل `.env` هم پشتیبانی می‌شود).
+  اگر تنظیم نباشند، فقط فایل‌های `subscription_partN.txt` ساخته می‌شوند.
+
+## نکته Xray
+
+تست واقعی (مرحله 5.5) یک‌بار باینری Xray-core (لینوکس ۶۴بیت) را از GitHub در
+`.xray_bin/` دانلود می‌کند. اگر دانلود یا اجرا ممکن نبود، مرحله به‌طور خودکار رد
+می‌شود و برنامه مثل قبل کار می‌کند. برای غیرفعال کردن: `REAL_TEST_ENABLED=False`.
