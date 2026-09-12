@@ -1,1 +1,8 @@
-requests==2.31.0
+# V2Ray Smart Collector v3.0 — وابستگی‌ها
+# نصب:  python -m pip install -r requirements.txt
+
+aiohttp>=3.9,<4
+python-dotenv>=1.0
+
+# --- فقط برای توسعه/تست ---
+pytest>=8.0
