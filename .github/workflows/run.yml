@@ -1,26 +1,60 @@
+# ============================================================
+# V2Ray Smart Collector — GitHub Actions workflow
+# اجرای خودکار هر ۶ ساعت + اجرای دستی
+# خروجی: subscription_part*.txt + history.db در ریپو کامیت می‌شوند
+# تلگرام: با سکرت‌های BOT_TOKEN / CHAT_ID (اگر تنظیم شده باشند)
+# ============================================================
 name: V2Ray Collector
+
 on:
-  schedule: [{ cron: "0 3 * * *" }]
-  workflow_dispatch:
-concurrency: { group: collector, cancel-in-progress: false }
+  schedule:
+    - cron: "0 */6 * * *"   # هر ۶ ساعت، دقیقه صفر
+  workflow_dispatch: {}     # اجرای دستی با دکمه «Run workflow»
+
+concurrency:
+  group: v2ray-collector
+  cancel-in-progress: false   # اجرای بعدی صبر می‌کند؛ تداخل نمی‌سازد
+
+permissions:
+  contents: write   # اجازه کامیت و پوش فایل‌های خروجی
 
 jobs:
   collect:
     runs-on: ubuntu-latest
-    permissions: { contents: write }
+    timeout-minutes: 55
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.11", cache: pip }
-      - uses: actions/cache@v4
-        with: { path: .xray_bin, key: xray-bin }
-      - run: pip install -r requirements.txt
-      - run: python v2ray_collector_v3.py
-        env: { BOT_TOKEN: "${{ secrets.BOT_TOKEN }}", CHAT_ID: "${{ secrets.CHAT_ID }}" }
-      - name: Commit & push
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Cache Xray binary
+        uses: actions/cache@v4
+        with:
+          path: .xray_bin
+          key: ${{ runner.os }}-xray-bin
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run collector
+        run: python v2ray_collector_v3.py
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+
+      - name: Commit and push results
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git diff --cached --quiet || git commit -m "chore: update subscription $(date -u +%F)"
-          git push
+          if git diff --cached --quiet; then
+            echo "No changes — nothing to commit."
+          else
+            git commit -m "chore: update subscription files $(date -u +'%Y-%m-%d %H:%M') UTC"
+            git push
+          fi
