@@ -23,6 +23,12 @@ main) هر دو ادغام شده‌اند.
   [BUG-8] مسیر سخت‌کد /tmp برای کانفیگ Xray به tempfile منتقل شد.
   [ENG]   HistoryDB به context manager تبدیل شد؛ retry فچر jitter گرفت؛
           کد مرده حذف شد؛ نسخه‌های لاگ یکسان‌سازی شدند (v3.0).
+  [GOLD]  پورت‌های طلایی دو ردیفه: T1 (443, 2053, 2083, 2087, 2096, 8443) و
+          T2 (80, 2052, 2082, 2086, 8080, 8880) با بونس امتیازی + بونس ترکیبی
+          Reality-443 + سوییچ GOLDEN_FILTER_ONLY برای فیلتر سخت.
+  [GOLD]  dedup هوشمند: در host:port تکراری، با‌ارزش‌ترین پروتکل نگه داشته
+          می‌شود (Reality > vless > trojan > hysteria2 > ss).
+  [GOLD]  INCLUDE_VMESS=True — vmess هم استخراج، امتیاز و rename تضمینی می‌شود.
 """
 
 import os
@@ -98,6 +104,8 @@ class Config:
         "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/Vless-Reality-White-Lists-Rus-Mobile.txt",
         "https://raw.githubusercontent.com/ShatakVPN/ConfigForge-V2Ray/main/configs/ir/vless.txt",
         "https://raw.githubusercontent.com/Surfboardv2ray/TGParse/main/splitted/hysteria2",
+        "https://raw.githubusercontent.com/MohammadBahemmat/V2ray-Collector/main/all_servers.txt",
+        "https://raw.githubusercontent.com/MahanKenway/Freedom-V2Ray/main/configs/vless_sub.txt",
     )
 
     MAX_WORKERS: int = 50
@@ -125,10 +133,22 @@ class Config:
     REAL_TEST_URL: str = "http://cp.cloudflare.com/generate_204"
     REAL_TEST_TIMEOUT: float = 5.0
 
-    # vmess عمداً حذف شد: نام کانال داخل JSON پنهان (فیلد "ps") است و با فرگمنت
-    # ساده قابل بازنویسی تضمینی نبود. اگر بعداً خواستی روشنش کنی:
-    # INCLUDE_VMESS=True کن؛ rename برای vmess حالا به‌صورت واقعی روی JSON کار می‌کند.
-    INCLUDE_VMESS: bool = False
+    # --- پورت‌های طلایی (دو ردیف اولویت) ------------------------------------
+    # ردیف ۱؛ HTTPS/TLS و پورت‌های امن کلودفلر — بالاترین اولویت
+    GOLDEN_PORTS_T1: tuple = (443, 2053, 2083, 2087, 2096, 8443)
+    # ردیف ۲؛ HTTP و پورت‌های CDN — اولویت دوم
+    GOLDEN_PORTS_T2: tuple = (80, 2052, 2082, 2086, 8080, 8880)
+    GOLDEN_BONUS_T1: int = 180
+    GOLDEN_BONUS_T2: int = 80
+    GOLDEN_T1_REALITY_EXTRA: int = 60   # Reality روی پورت ردیف ۱: امتیاز ترکیبی
+    # بونس فقط برای پروتکل‌های دارای TLS (vless/trojan/hysteria2/Reality و vmess-TLS)
+    GOLDEN_ONLY_TLS: bool = True
+    # اگر True باشد، فقط نودهای روی پورت طلایی وارد خروجی نهایی می‌شوند
+    GOLDEN_FILTER_ONLY: bool = False
+
+    # vmess فعال شد (نسخه طلایی): rename برای vmess به‌صورت واقعی روی فیلد JSON
+    # «ps» کار می‌کند؛ بنابراین همه کانفیگ‌ها حتی vmess نام کانال می‌گیرند.
+    INCLUDE_VMESS: bool = True
 
     BASE_SCHEMES: tuple = (
         "vless://", "ss://",
@@ -221,6 +241,20 @@ class ScoredNode:
 # =============================================================================
 # پارسر کانفیگ (همه پروتکل‌ها + اعتبارسنجی یکپارچه)
 # =============================================================================
+
+# اولویت پروتکل برای dedup هوشمند: وقتی host:port تکراری باشد،
+# با‌ارزش‌ترین کانفیگ نگه داشته می‌شود به‌جای اولین.
+PROTO_RANK = {"vless": 50, "trojan": 40, "hysteria2": 30, "hy2": 30,
+              "vmess": 20, "ss": 10}
+
+
+def config_rank(pc: "ParsedConfig") -> int:
+    """امتیاز اولویت یک کانفیگ برای dedup: Reality بر هر پروتکل می‌چربد."""
+    rank = PROTO_RANK.get(pc.scheme, 0)
+    if "reality" in pc.raw.lower():
+        rank += 100
+    return rank
+
 
 class ConfigParser:
     """
@@ -780,6 +814,25 @@ class SmartScorer:
         self.db = db
         self.geo_map = geo_map  # host -> (flag, cc, country, city)
 
+    def _golden_bonus(self, r: TestResult) -> int:
+        """بونس پورت طلایی: ردیف ۱ > ردیف ۲. با GOLDEN_ONLY_TLS فقط پروتکل‌های
+        دارای TLS بونس می‌گیرند (vmess هم فقط اگر داخل لینک tls/reality باشد؛
+        ss و امثال آن بی‌بونس می‌مانند)."""
+        if r.port in CFG.GOLDEN_PORTS_T1:
+            base = CFG.GOLDEN_BONUS_T1
+        elif r.port in CFG.GOLDEN_PORTS_T2:
+            base = CFG.GOLDEN_BONUS_T2
+        else:
+            return 0
+        if not CFG.GOLDEN_ONLY_TLS:
+            return base
+        if r.scheme in ("vless", "trojan", "hysteria2", "hy2"):
+            return base
+        if r.scheme == "vmess":
+            low = r.config.lower()
+            return base if ("tls" in low or "reality" in low) else 0
+        return 0  # ss و بقیه — بدون بونس طلایی
+
     def score_one(self, r: TestResult) -> Optional[ScoredNode]:
         try:
             ping = r.tls_ping or r.tcp_ping
@@ -808,7 +861,7 @@ class SmartScorer:
                 score += 100
             score += r.stability * 50
             score += self.db.get_reliability_bonus(r.host, r.port)
-            name = f"👉🆔@{CFG.CHANNEL_TAG}📡{flag}®️{country}©️{city}"
+            name = f"👉🆔@{CFG.CHANNEL_TAG}📡{flag}®️{country}©️{city}🅿️ping:{ping}ms"
             final_link = ConfigParser.rename(r.config, r.scheme, name)
             if not final_link:
                 # rename تضمینی ممکن نبود (مثلاً JSON خراب) -> این کانفیگ منتشر نشود
@@ -1156,14 +1209,16 @@ async def main():
             else:
                 parse_fail += 1
         log.info(f"   ✅ {len(parsed_list)} پارس موفق | {parse_fail} پارس ناموفق")
-        # dedup بر اساس host:port قبل از تست (کاهش تست‌های تکراری)
+        # dedup هوشمند بر اساس host:port قبل از تست: در تکراری‌ها،
+        # با‌ارزش‌ترین پروتکل (Reality > vless > trojan > hy2 > vmess > ss) می‌ماند
         by_hostport = {}
         for pc in parsed_list:
             key = (pc.host, pc.port)
-            if key not in by_hostport:
+            cur = by_hostport.get(key)
+            if cur is None or config_rank(pc) > config_rank(cur):
                 by_hostport[key] = pc
         parsed_list = list(by_hostport.values())
-        log.info(f"   ✅ {len(parsed_list)} پس از dedup بر اساس host:port")
+        log.info(f"   ✅ {len(parsed_list)} پس از dedup هوشمند بر اساس host:port")
         if len(parsed_list) > CFG.MAX_CANDIDATES:
             random.shuffle(parsed_list)
             parsed_list = parsed_list[:CFG.MAX_CANDIDATES]
@@ -1178,6 +1233,11 @@ async def main():
         log.info("🎯 مرحله 5: امتیازدهی...")
         scorer = SmartScorer(db, geo_map)
         scored = scorer.score_all(tested)
+        if CFG.GOLDEN_FILTER_ONLY:
+            golden = set(CFG.GOLDEN_PORTS_T1 + CFG.GOLDEN_PORTS_T2)
+            before = len(scored)
+            scored = [n for n in scored if n.port in golden]
+            log.info(f"   🔥 فیلتر پورت طلایی: {before} -> {len(scored)}")
         log.info("🧪 مرحله 5.5: تست واقعی اتصال (Xray)...")
         scored = await run_real_tests(scored)
         seen = set()
