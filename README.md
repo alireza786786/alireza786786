@@ -1,61 +1,65 @@
-# V2Ray Smart Collector v3.0 — راهنمای بسته
+# V2Ray Smart Collector
 
-## این بسته شامل چه چیزهایی است
+<div align="center">
 
-| فایل | توضیح |
-|---|---|
-| `v2ray_collector_v3.py` | نسخه کامل و مهندسی‌شده (هر دو بخش کد ادغام شده) |
-| `test_v2ray.py` | تست‌های pytest (۲۶ تست) با پوشش باگ‌های پیدا شده |
-| `requirements.txt` | وابستگی‌ها |
+**جمع‌آوری خودکار، تست چندمرحله‌ای و انتشار کانفیگ‌های V2Ray** — اجرا در GitHub Actions یا Termux
 
-## اصلاحات اعمال‌شده (همگی با تست عملی اثبات شده)
+[![Workflow](https://github.com/alireza786786/alireza786786/actions/workflows/run.yml/badge.svg)](https://github.com/alireza786786/alireza786786/actions/workflows/run.yml)
+![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-26%20passed-brightgreen)
 
-### بخش اول (پارسرها/دیتابیس/فچر)
-1. **`is_valid_host`** — نسخه قبلی رشته‌هایی مثل `""` یا `"bad host!!"` را می‌پذیرفت
-   (کدک idna پایتون سهل‌گیر است). حالا: IP با `ipaddress`، دامنه با regex روی
-   لیبل‌ها، طول ≤۲۵۳، پشتیبانی IDN.
-2. **ss با `?plugin=` (SIP002)** — دیگر حذف نمی‌شود؛ query قبل از جداسازی پورت
-   حذف می‌شود. براکت IPv6 هم برداشته می‌شود.
-3. **SQLite از چند نخ** — `check_same_thread=False` + `RLock` + حالت WAL؛ از
-   نخ‌های worker دیگر `ProgrammingError` نمی‌گیرید.
-4. **محدوده پورت** — همه پروتکل‌ها ۱ تا ۶۵۵۳۵ را رعایت می‌کنند؛ عبارت غلط
-   `not p.port` اصلاح شد.
-5. **نصب خودکار پکیج حذف شد** — خطای واضح + `requirements.txt`.
+</div>
 
-### بخش دوم (تستر/جغرافیا/امتیازدهی/تلگرام/Xray/main)
-6. **hysteria2/hy2 از تست TLS روی TCP خارج شدند** — این پروتکل QUIC/UDP است و
-   مصافحه TLS-TCP برای آن معتبر نیست؛ نسخه قبلی نودهای hy2 سالم را بی‌مورد حذف می‌کرد.
-7. **GeoLocator** — `socket.gethostbyname` (مسدودکننده event loop) به
-   `asyncio.to_thread` منتقل شد؛ با صدها میزبان، لوپ دیگر نمی‌ایستد.
-8. **مسیر کانفیگ Xray** — از `/tmp` سخت‌کد به `tempfile.gettempdir()` منتقل شد
-   (سازگار با ویندوز هم هست).
-9. **یکپارچه‌سازی نسخه** — لاگ‌ها (v2.1/v2.2 متناقض) به v3.0 یکسان شدند.
+## ✨ ویژگی‌ها
 
-## محدودیت‌های شناخته‌شده (طراحی عمدی)
+- **۶ پروتکل** — vless / trojan / hysteria2 / shadowsocks / vmess (فعال)
+- **پورت‌های طلایی دو ردیفه** — اولویت ۱: 443، 2053، 2083، 2087، 2096، 8443 · اولویت ۲: 80، 2052، 2082، 2086، 8080، 8880 — با بونس امتیازی و سوییچ فیلتر اختیاری
+- **dedup هوشمند** — در host:port تکراری، با‌ارزش‌ترین پروتکل می‌ماند (Reality > vless > trojan > hy2 > vmess > ss)
+- **پارس سخت‌گیرانه** — اعتبارسنجی host و پورت، پشتیبانی SIP002 و IPv6
+- **تست چندمرحله‌ای** — TCP / TLS / Reality + **تست واقعی با Xray-core**
+- **امتیازدهی هوشمند** — پینگ، پایداری، پروتکل، کشور، پورت طلایی و اعتبار تاریخی (SQLite + WAL)
+- **GeoIP موازی** با کش پایدار
+- **rename تضمینی نام کانال** — همه پروتکل‌ها حتی vmess (JSON «ps»)
+- **انتشار خودکار** — تلگرام + فایل‌های اشتراک در ریپو
 
-- **hysteria2 فقط با TCP-ping فیلتر می‌شود** — اعتبارسنجی واقعی hy2 نیاز به
-  پروب QUIC دارد که خارج از کتابخانه استاندارد پایتون است (مثلاً پکیج aioquic).
-  نود hy2 که TCP بسته داشته باشد همچنان حذف می‌شود؛ این یک فیلتر خشن است.
-- **vmess به‌طور پیش‌فرض غیرفعال است** (`INCLUDE_VMESS=False`) — با
-  `INCLUDE_VMESS=True` فعال می‌شود؛ rename برای vmess روی فیلد JSON «ps» کار می‌کند.
-- **ss با plugin (obfs) در تست واقعی Xray ساخته نمی‌شود** — `build_xray_outbound`
-  برای چنین نودی outbound برنمی‌گرداند و نود جریمه نمی‌شود اما از مسیر Xray عبور نمی‌کند.
-
-## اجرا
+## 🚀 شروع سریع
 
 ```bash
-python -m pip install -r requirements.txt
-python -m pytest test_v2ray.py -v          # تست‌ها (۲۶ تست)
-python v2ray_collector_v3.py               # اجرای جمع‌آوری
+pip install -r requirements.txt
+export BOT_TOKEN=... CHAT_ID=...   # اختیاری — بدون آن فقط فایل ساخته می‌شود
+python v2ray_collector_v3.py
 ```
 
-## متغیرهای محیطی
+## ⚙️ فرایند
 
-- `BOT_TOKEN` و `CHAT_ID` — برای ارسال خودکار به تلگرام (فایل `.env` هم پشتیبانی می‌شود).
-  اگر تنظیم نباشند، فقط فایل‌های `subscription_partN.txt` ساخته می‌شوند.
+```mermaid
+flowchart LR
+    A[منابع GitHub] --> B[AsyncFetcher]
+    B --> C[ConfigDecoder]
+    C --> D[ConfigParser + dedup]
+    D --> E[تست TCP/TLS/Reality]
+    E --> F[GeoLocator]
+    F --> G[SmartScorer]
+    G --> H[Xray Real Test]
+    H --> I[Telegram + فایل اشتراک]
+    E & G --> J[(history.db)]
+```
 
-## نکته Xray
+## 🕐 اجرای خودکار
 
-تست واقعی (مرحله 5.5) یک‌بار باینری Xray-core (لینوکس ۶۴بیت) را از GitHub در
-`.xray_bin/` دانلود می‌کند. اگر دانلود یا اجرا ممکن نبود، مرحله به‌طور خودکار رد
-می‌شود و برنامه مثل قبل کار می‌کند. برای غیرفعال کردن: `REAL_TEST_ENABLED=False`.
+ویجت اجرای GitHub Actions هر ۶ ساعت اسکریپت را می‌راند؛ خروجی به‌صورت خودکار در ریپو کامیت می‌شود. تنظیم اسکریپت در `.github/workflows/run.yml` است.
+
+## 🧱 ساختار
+
+```
+v2ray_collector_v3.py          اسکریپت اصلی
+test_v2ray.py                  ۲۶ تست واحد pytest
+requirements.txt               وابستگی‌ها
+.github/workflows/run.yml      اجرای خودکار
+```
+
+## 📌 یادداشت‌ها
+
+- hysteria2 فقط با TCP-ping فیلتر می‌شود (اعتبارسنجی کامل نیاز به پروب QUIC دارد)
+- vmess به‌طور پیش‌فرض خاموش است — با `INCLUDE_VMESS=True` فعال شود
+- برای تست‌ها: `pytest test_v2ray.py -v`
